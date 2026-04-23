@@ -1,0 +1,28 @@
+{
+  "name": "polygon-editor",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LizKa2091/polygon-editor.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/LizKa2091/polygon-editor/issues"
+  },
+  "homepage": "https://github.com/LizKa2091/polygon-editor#readme",
+  "description": "",
+  "devDependencies": {
+    "html-webpack-plugin": "^5.6.7",
+    "ts-loader": "^9.5.7",
+    "typescript": "^6.0.3",
+    "webpack": "^5.106.2",
+    "webpack-cli": "^7.0.2",
+    "webpack-dev-server": "^5.2.3"
+  }
+}
