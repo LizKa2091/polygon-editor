@@ -1,0 +1,103 @@
+import { IPolygon, IPoint, ICommand } from '../types';
+import { HistoryManager } from '../history';
+
+export class PolygonEditor extends HTMLElement {
+   private canvas: HTMLCanvasElement;
+   private ctx: CanvasRenderingContext2D;
+   private polygons: IPolygon[] = [];
+   private history = new HistoryManager();
+   private selectedId: string | null = null;
+
+   constructor() {
+      super();
+      this.attachShadow({ mode: 'open' });
+      this.shadowRoot!.innerHTML = `
+         <style>
+            :host { display: flex; flex-direction: column; height: 100vh; font-family: sans-serif; }
+            .toolbar { padding: 15px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; display: flex; gap: 10px; }
+            .info { padding: 5px 15px; font-size: 12px; color: #666; }
+            canvas { flex-grow: 1; background: #fff; touch-action: none; }
+            button { padding: 8px 12px; cursor: pointer; border-radius: 6px; border: 1px solid #ccc; background: white; transition: 0.2s; }
+            button:hover { background: #e9ecef; }
+         </style>
+         <div class="toolbar">
+            <button id="add">Сгенерировать</button>
+            <button id="undo">Отменить</button>
+            <button id="redo">Повторить</button>
+         </div>
+         <div class="info" id="status">Полигонов: 0</div>
+         <canvas id="canvas"></canvas>
+      `;
+
+      this.canvas = this.shadowRoot!.getElementById('canvas') as HTMLCanvasElement;
+      this.ctx = this.canvas.getContext('2d')!;
+   }
+
+   connectedCallback() {
+      window.addEventListener('resize', () => this.resize());
+
+      this.shadowRoot!.getElementById('add')?.addEventListener('click', () => this.addPolygon());
+      this.shadowRoot!.getElementById('undo')?.addEventListener('click', () => { this.history.undo(); this.render(); });
+      this.shadowRoot!.getElementById('redo')?.addEventListener('click', () => { this.history.redo(); this.render(); });
+      
+      this.resize();
+   }
+
+   private resize() {
+      this.canvas.width = this.canvas.clientWidth;
+      this.canvas.height = this.canvas.clientHeight;
+
+      this.render();
+   }
+
+   private addPolygon() {
+      const id = Math.random().toString(36).substring(2, 9);
+      const color = `hsl(${Math.random() * 360}, 70%, 60%)`;
+      const center = { x: Math.random() * (this.canvas.width - 100) + 50, y: Math.random() * (this.canvas.height - 100) + 50 };
+      
+      const points: IPoint[] = [];
+      const vertices = Math.floor(Math.random() * 5) + 3;
+
+      for (let i=0; i<vertices; i++) {
+         const a = (i / vertices) * Math.PI * 2;
+         const r = 30 + Math.random() * 20;
+
+         points.push({ x: center.x + Math.cos(a) * r, y: center.y + Math.sin(a) * r });
+      }
+
+      const poly: IPolygon = {
+         id, points, color,
+         isSelected: false
+      };
+
+      const cmd: ICommand = {
+         execute: () => { this.polygons.push(poly); },
+         undo: () => { 
+            this.polygons = this.polygons.filter((p) => p.id !== id); 
+         }
+      };
+      
+      this.history.execute(cmd);
+      this.render();
+   }
+
+   private render() {
+      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      
+      this.polygons.forEach(p => {
+         this.ctx.beginPath();
+         this.ctx.moveTo(p.points[0].x, p.points[0].y);
+         p.points.forEach((pt: { x: number; y: number; }) => this.ctx.lineTo(pt.x, pt.y));
+         this.ctx.closePath();
+
+         this.ctx.fillStyle = p.color;
+         this.ctx.fill();
+
+         this.ctx.strokeStyle = p.id === this.selectedId ? '#000' : '#666';
+         this.ctx.lineWidth = p.id === this.selectedId ? 3 : 1;
+         this.ctx.stroke();
+      });
+      this.shadowRoot!.getElementById('status')!.textContent = `Полигонов: ${this.polygons.length}`;
+   }
+}
+customElements.define('polygon-editor', PolygonEditor);
