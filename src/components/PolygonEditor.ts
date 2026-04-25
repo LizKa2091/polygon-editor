@@ -40,7 +40,48 @@ export class PolygonEditor extends HTMLElement {
       this.shadowRoot!.getElementById('undo')?.addEventListener('click', () => { this.history.undo(); this.render(); });
       this.shadowRoot!.getElementById('redo')?.addEventListener('click', () => { this.history.redo(); this.render(); });
       
+      this.canvas.addEventListener('mousedown', (e) => this.handleSelect(e));
+      this.shadowRoot!.getElementById('delete')?.addEventListener('click', () => this.deleteSelected());
+
       this.resize();
+   }
+
+   private handleSelect(e: MouseEvent) {
+      const rect = this.canvas.getBoundingClientRect();
+      const mouse = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      
+      const hit = [...this.polygons].reverse().find((p) => this.isPointInPoly(mouse, p));
+      this.selectedId = hit ? hit.id : null;
+      this.render();
+   }
+
+   private isPointInPoly(pt: IPoint, poly: IPolygon) {
+      let isInside = false;
+
+      for (let i = 0, j = poly.points.length - 1; i < poly.points.length; j = i++) {
+         if (((poly.points[i].y > pt.y) !== (poly.points[j].y > pt.y)) &&
+            (pt.x < (poly.points[j].x - poly.points[i].x) * (pt.y - poly.points[i].y) / (poly.points[j].y - poly.points[i].y) + poly.points[i].x))
+               isInside = !isInside;
+      }
+
+      return isInside;
+   }
+
+   private deleteSelected() {
+      if (!this.selectedId) return alert("Полигон не выбран!");
+
+      const target = this.polygons.find((p) => p.id === this.selectedId)!;
+      const cmd: ICommand = {
+         execute: () => { 
+            this.polygons = this.polygons.filter((p) => p.id !== target.id); this.selectedId = null; 
+         },
+         undo: () => { 
+            this.polygons.push(target); 
+         }
+      };
+      
+      this.history.execute(cmd);
+      this.render();
    }
 
    private resize() {
