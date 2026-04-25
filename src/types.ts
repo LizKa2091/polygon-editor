@@ -8,6 +8,7 @@ export interface IPolygon {
    points: IPoint[];
    color: string;
    isSelected: boolean;
+   scale?: number;
 }
 
 export interface ICommand {
