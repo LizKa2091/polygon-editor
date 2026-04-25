@@ -23,11 +23,15 @@ export class PolygonEditor extends HTMLElement {
             canvas { flex-grow: 1; background: #fff; touch-action: none; }
             button { padding: 8px 12px; cursor: pointer; border-radius: 6px; border: 1px solid #ccc; background: white; transition: 0.2s; }
             button:hover { background: #e9ecef; }
+            button:active { transform: translateY(0); box-shadow: none; }
+            .btn-danger { color: #d93025; }
          </style>
          <div class="toolbar">
             <button id="add">Сгенерировать</button>
-            <button id="undo">Отменить</button>
-            <button id="redo">Повторить</button>
+            <button id="delete" class="btn-danger">Удалить</button>
+            <button id="clear">Очистить всё</button>
+            <button id="undo">Отменить (Ctrl + Z)</button>
+            <button id="redo">Вернуть (Ctrl + Y)</button>
          </div>
          <div class="info" id="status">Полигонов: 0</div>
          <canvas id="canvas"></canvas>
@@ -41,6 +45,8 @@ export class PolygonEditor extends HTMLElement {
       window.addEventListener('resize', () => this.resize());
 
       this.shadowRoot!.getElementById('add')?.addEventListener('click', () => this.addPolygon());
+      this.shadowRoot!.getElementById('delete')?.addEventListener('click', () => this.deleteSelected());
+      this.shadowRoot!.getElementById('clear')?.addEventListener('click', () => this.clearAll());
       this.shadowRoot!.getElementById('undo')?.addEventListener('click', () => { this.history.undo(); this.render(); });
       this.shadowRoot!.getElementById('redo')?.addEventListener('click', () => { this.history.redo(); this.render(); });
       
@@ -48,9 +54,19 @@ export class PolygonEditor extends HTMLElement {
       window.addEventListener('mousemove', (e) => this.handleMouseMove(e));
       window.addEventListener('mouseup', () => this.handleMouseUp());
 
-      this.shadowRoot!.getElementById('delete')?.addEventListener('click', () => this.deleteSelected());
+      window.addEventListener('keydown', (e) => this.handleKeyDown(e));
 
       this.resize();
+   }
+
+   private undo() {
+      this.history.undo();
+      this.render();
+   }
+
+   private redo() {
+      this.history.redo();
+      this.render();
    }
 
    private handleSelect(e: MouseEvent) {
@@ -73,6 +89,41 @@ export class PolygonEditor extends HTMLElement {
       this.render();
    }
 
+   private handleKeyDown(e: KeyboardEvent) {
+      if (e.ctrlKey && (e.key === 'z' || e.key === 'я')) {
+         e.preventDefault();
+
+         this.undo();
+      }
+      if (e.ctrlKey && (e.key === 'y' || e.key === 'н' || (e.shiftKey && (e.key === 'Z' || e.key === 'Я')))) {
+         e.preventDefault();
+
+         this.redo();
+      }
+      if (e.key === 'Delete') {
+         this.deleteSelected();
+      }
+   }
+
+   private handleMouseDown(e: MouseEvent) {
+      const rect = this.canvas.getBoundingClientRect();
+      const mouse = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      
+      const hit = [...this.polygons].reverse().find((p) => this.isPointInPoly(mouse, p));
+
+      if (hit) {
+         this.isDragging = true;
+         this.selectedId = hit.id;
+         this.startPoints = hit.points.map((p) => ({...p}));
+         this.dragStartMouse = mouse;
+      } 
+      else {
+         this.selectedId = null;
+      }
+
+      this.render();
+   }
+
    private handleMouseMove(e: MouseEvent) {
       if (!this.isDragging || !this.selectedId) return;
 
@@ -90,28 +141,27 @@ export class PolygonEditor extends HTMLElement {
          const poly = this.polygons.find((p) => p.id === this.selectedId);
 
          if (poly) {
-            const endPoints = poly.points.map(p => ({...p}));
+            const endPoints = poly.points.map((p) => ({...p}));
             const initialPoints = [...this.startPoints];
 
-            const moveCmd: ICommand = {
-               execute: () => {
-                  const p = this.polygons.find((x) => x.id === poly.id);
-                  if (p) p.points = endPoints;
-
-                  this.render();
-               },
-               undo: () => {
-                  const p = this.polygons.find((x) => x.id === poly.id);
-                  if (p) p.points = initialPoints;
-
-                  this.render();
-               }
-            };
-            this.history.execute(moveCmd); 
+            if (JSON.stringify(initialPoints) !== JSON.stringify(endPoints)) {
+               const polyId = this.selectedId;
+               const moveCmd: ICommand = {
+                  execute: () => {
+                     const p = this.polygons.find(x => x.id === polyId);
+                     if (p) p.points = endPoints;
+                  },
+                  undo: () => {
+                     const p = this.polygons.find(x => x.id === polyId);
+                     if (p) p.points = initialPoints;
+                  }
+               };
+               this.history.execute(moveCmd);
+            }
          }
       }
-
       this.isDragging = false;
+      this.render();
    }
 
    private move(dx: number, dy: number) {
@@ -133,7 +183,7 @@ export class PolygonEditor extends HTMLElement {
    private isPointInPoly(pt: IPoint, poly: IPolygon) {
       let isInside = false;
 
-      for (let i = 0, j = poly.points.length - 1; i < poly.points.length; j = i++) {
+      for (let i=0, j = poly.points.length - 1; i < poly.points.length; j = i++) {
          if (((poly.points[i].y > pt.y) !== (poly.points[j].y > pt.y)) &&
             (pt.x < (poly.points[j].x - poly.points[i].x) * (pt.y - poly.points[i].y) / (poly.points[j].y - poly.points[i].y) + poly.points[i].x))
                isInside = !isInside;
@@ -148,13 +198,36 @@ export class PolygonEditor extends HTMLElement {
       const target = this.polygons.find((p) => p.id === this.selectedId)!;
       const cmd: ICommand = {
          execute: () => { 
-            this.polygons = this.polygons.filter((p) => p.id !== target.id); this.selectedId = null; 
+            this.polygons = this.polygons.filter((p) => p.id !== target.id); 
+            this.selectedId = null; 
+            this.render();
          },
          undo: () => { 
             this.polygons.push(target); 
+            this.render();
          }
       };
       
+      this.history.execute(cmd);
+      this.render();
+   }
+
+   private clearAll() {
+      if (this.polygons.length === 0) return;
+
+      const oldPolygons = [...this.polygons];
+      const cmd: ICommand = {
+         execute: () => { 
+            this.polygons = []; 
+            this.selectedId = null; 
+            this.render(); 
+         },
+         undo: () => { 
+            this.polygons = oldPolygons; 
+            this.render(); 
+         }
+      };
+
       this.history.execute(cmd);
       this.render();
    }
@@ -169,27 +242,30 @@ export class PolygonEditor extends HTMLElement {
    private addPolygon() {
       const id = Math.random().toString(36).substring(2, 9);
       const color = `hsl(${Math.random() * 360}, 70%, 60%)`;
-      const center = { x: Math.random() * (this.canvas.width - 100) + 50, y: Math.random() * (this.canvas.height - 100) + 50 };
+      const vertices = Math.floor(Math.random() * 5) + 3;
+      const radius = 30 + Math.random() * 20;
+      
+      const center = { 
+         x: Math.max(radius, Math.min(this.canvas.width - radius, Math.random() * this.canvas.width)), 
+         y: Math.max(radius, Math.min(this.canvas.height - radius, Math.random() * this.canvas.height)) 
+      };
       
       const points: IPoint[] = [];
-      const vertices = Math.floor(Math.random() * 5) + 3;
-
       for (let i=0; i<vertices; i++) {
          const a = (i / vertices) * Math.PI * 2;
-         const r = 30 + Math.random() * 20;
-
-         points.push({ x: center.x + Math.cos(a) * r, y: center.y + Math.sin(a) * r });
+         points.push({ x: center.x + Math.cos(a) * radius, y: center.y + Math.sin(a) * radius });
       }
 
-      const poly: IPolygon = {
-         id, points, color,
-         isSelected: false
-      };
+      const poly: IPolygon = { id, points, color, isSelected: false };
 
       const cmd: ICommand = {
-         execute: () => { this.polygons.push(poly); },
+         execute: () => { 
+            this.polygons.push(poly); 
+            this.render(); 
+         },
          undo: () => { 
             this.polygons = this.polygons.filter((p) => p.id !== id); 
+            this.render();
          }
       };
       
@@ -200,7 +276,7 @@ export class PolygonEditor extends HTMLElement {
    private render() {
       this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
       
-      this.polygons.forEach(p => {
+      this.polygons.forEach((p) => {
          this.ctx.beginPath();
          this.ctx.moveTo(p.points[0].x, p.points[0].y);
          p.points.forEach((pt: { x: number; y: number; }) => this.ctx.lineTo(pt.x, pt.y));
@@ -209,11 +285,15 @@ export class PolygonEditor extends HTMLElement {
          this.ctx.fillStyle = p.color;
          this.ctx.fill();
 
-         this.ctx.strokeStyle = p.id === this.selectedId ? '#000' : '#666';
-         this.ctx.lineWidth = p.id === this.selectedId ? 3 : 1;
+         const isSelected = p.id === this.selectedId;
+         this.ctx.strokeStyle = isSelected ? '#000' : '#666';
+         this.ctx.lineWidth = isSelected ? 4 : 2;
          this.ctx.stroke();
       });
-      this.shadowRoot!.getElementById('status')!.textContent = `Полигонов: ${this.polygons.length}`;
+
+      const selected = this.polygons.find(p => p.id === this.selectedId);
+      const statusText = `Полигонов: ${this.polygons.length} | ${selected ? 'Выбран: ' + selected.id : 'Ничего не выбрано'}`;
+      this.shadowRoot!.getElementById('status')!.textContent = statusText;
    }
 }
 customElements.define('polygon-editor', PolygonEditor);
