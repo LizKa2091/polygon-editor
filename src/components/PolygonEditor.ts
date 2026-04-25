@@ -256,12 +256,12 @@ export class PolygonEditor extends HTMLElement {
          points.push({ x: center.x + Math.cos(a) * radius, y: center.y + Math.sin(a) * radius });
       }
 
-      const poly: IPolygon = { id, points, color, isSelected: false };
+      const poly: IPolygon = { id, points, color, isSelected: false, scale: 0 };
 
       const cmd: ICommand = {
          execute: () => { 
             this.polygons.push(poly); 
-            this.render(); 
+            this.animateNewPolygon(poly);
          },
          undo: () => { 
             this.polygons = this.polygons.filter((p) => p.id !== id); 
@@ -273,10 +273,37 @@ export class PolygonEditor extends HTMLElement {
       this.render();
    }
 
+   private animateNewPolygon(poly: IPolygon) {
+      const duration = 300;
+      const start = performance.now();
+
+      const step = (now: number) => {
+         const progress = Math.min(1, (now-start) / duration);
+         poly.scale = progress;
+         this.render();
+
+         if (progress < 1) {
+            requestAnimationFrame(step);
+         }
+      };
+      requestAnimationFrame(step);
+   }
+
    private render() {
       this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
       
       this.polygons.forEach((p) => {
+         this.ctx.save();
+         
+         if (p.scale !== undefined && p.scale < 1) {
+            const cx = p.points.reduce((sum, pt) => sum + pt.x, 0) / p.points.length;
+            const cy = p.points.reduce((sum, pt) => sum + pt.y, 0) / p.points.length;
+
+            this.ctx.translate(cx, cy);
+            this.ctx.scale(p.scale, p.scale);
+            this.ctx.translate(-cx, -cy);
+         }
+
          this.ctx.beginPath();
          this.ctx.moveTo(p.points[0].x, p.points[0].y);
          p.points.forEach((pt: { x: number; y: number; }) => this.ctx.lineTo(pt.x, pt.y));
@@ -289,6 +316,8 @@ export class PolygonEditor extends HTMLElement {
          this.ctx.strokeStyle = isSelected ? '#000' : '#666';
          this.ctx.lineWidth = isSelected ? 4 : 2;
          this.ctx.stroke();
+
+         this.ctx.restore();
       });
 
       const selected = this.polygons.find(p => p.id === this.selectedId);
