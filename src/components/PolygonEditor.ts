@@ -8,6 +8,10 @@ export class PolygonEditor extends HTMLElement {
    private history = new HistoryManager();
    private selectedId: string | null = null;
 
+   private isDragging = false;
+   private dragStartMouse: IPoint = { x: 0, y: 0 };
+   private startPoints: IPoint[] = [];
+
    constructor() {
       super();
       this.attachShadow({ mode: 'open' });
@@ -41,6 +45,9 @@ export class PolygonEditor extends HTMLElement {
       this.shadowRoot!.getElementById('redo')?.addEventListener('click', () => { this.history.redo(); this.render(); });
       
       this.canvas.addEventListener('mousedown', (e) => this.handleSelect(e));
+      window.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+      window.addEventListener('mouseup', () => this.handleMouseUp());
+
       this.shadowRoot!.getElementById('delete')?.addEventListener('click', () => this.deleteSelected());
 
       this.resize();
@@ -51,7 +58,75 @@ export class PolygonEditor extends HTMLElement {
       const mouse = { x: e.clientX - rect.left, y: e.clientY - rect.top };
       
       const hit = [...this.polygons].reverse().find((p) => this.isPointInPoly(mouse, p));
+
+      if (hit) {
+         this.isDragging = true;
+         this.selectedId = hit.id;
+         this.startPoints = hit.points.map((p) => ({...p}));
+         this.dragStartMouse = mouse;
+      }
+      else {
+         this.selectedId = null;
+      }
+
       this.selectedId = hit ? hit.id : null;
+      this.render();
+   }
+
+   private handleMouseMove(e: MouseEvent) {
+      if (!this.isDragging || !this.selectedId) return;
+
+      const rect = this.canvas.getBoundingClientRect();
+      const mouse = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+
+      const dx = mouse.x - this.dragStartMouse.x;
+      const dy = mouse.y - this.dragStartMouse.y;
+
+      this.move(dx, dy);
+   }
+
+   private handleMouseUp() {
+      if (this.isDragging && this.selectedId) {
+         const poly = this.polygons.find((p) => p.id === this.selectedId);
+
+         if (poly) {
+            const endPoints = poly.points.map(p => ({...p}));
+            const initialPoints = [...this.startPoints];
+
+            const moveCmd: ICommand = {
+               execute: () => {
+                  const p = this.polygons.find((x) => x.id === poly.id);
+                  if (p) p.points = endPoints;
+
+                  this.render();
+               },
+               undo: () => {
+                  const p = this.polygons.find((x) => x.id === poly.id);
+                  if (p) p.points = initialPoints;
+
+                  this.render();
+               }
+            };
+            this.history.execute(moveCmd); 
+         }
+      }
+
+      this.isDragging = false;
+   }
+
+   private move(dx: number, dy: number) {
+      const poly = this.polygons.find((p) => p.id === this.selectedId);
+      if (!poly) return;
+      
+      poly.points = this.startPoints.map((p) => {
+         let nx = p.x + dx;
+         let ny = p.y + dy;
+
+         nx = Math.max(0, Math.min(this.canvas.width, nx));
+         ny = Math.max(0, Math.min(this.canvas.height, ny));
+         return { x: nx, y: ny };
+      });
+
       this.render();
    }
 

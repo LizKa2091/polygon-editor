@@ -1,1 +1,1 @@
-console.log('app was initialized');
+import './components/PolygonEditor';
