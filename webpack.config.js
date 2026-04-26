@@ -11,6 +11,7 @@ module.exports = {
       filename: 'bundle.js',
       path: path.resolve(__dirname, 'dist'),
       clean: true,
+      publicPath: './'
    },
    plugins: [new HtmlWebpackPlugin({ template: './src/index.html' })],
    devServer: { static: './dist', hot: true },
